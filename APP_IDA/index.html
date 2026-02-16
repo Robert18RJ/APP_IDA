@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inspectoría App | Gestión Inteligente</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-app: #0f172a;       
+            --bg-panel: #1e293b;     
+            --border: #334155;       
+            --primary: #3b82f6;      
+            --success: #10b981;      
+            --warning: #f59e0b;      
+            --danger: #ef4444;       
+            --neutral: #64748b;      
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --sidebar-width: 260px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            overflow-x: hidden;
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-panel);
+            border-right: 1px solid var(--border);
+            height: 100vh;
+            position: fixed;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            z-index: 50;
+        }
+
+        .brand {
+            display: flex; align-items: center; gap: 0.75rem;
+            font-size: 1.1rem; font-weight: 700; margin-bottom: 2.5rem;
+            color: var(--text-main);
+        }
+
+        .nav-links { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+        
+        .nav-item {
+            padding: 0.75rem 1rem; border-radius: 8px;
+            color: var(--text-muted); cursor: pointer;
+            display: flex; align-items: center; gap: 0.75rem;
+            transition: all 0.2s; font-weight: 500;
+        }
+        
+        .nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text-main); }
+        .nav-item.active { 
+            background: rgba(59, 130, 246, 0.15); 
+            color: var(--primary); 
+            border-left: 3px solid var(--primary);
+        }
+
+        /* --- MAIN CONTENT --- */
+        .main-content {
+            flex: 1; margin-left: var(--sidebar-width); padding: 2rem;
+            width: calc(100% - var(--sidebar-width));
+        }
+
+        .top-bar {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;
+        }
+
+        .btn-group { display: flex; gap: 0.5rem; }
+        .btn {
+            background: var(--bg-panel); border: 1px solid var(--border);
+            color: var(--text-main); padding: 0.5rem 1rem; border-radius: 6px;
+            cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;
+            transition: 0.2s;
+        }
+        .btn:hover { border-color: var(--primary); background: rgba(255,255,255,0.05); }
+        .btn-primary { background: var(--primary); border-color: var(--primary); color: white; }
+
+        /* --- VISTAS --- */
+        .view-section { display: none; animation: fadeIn 0.4s ease-out; }
+        .view-section.active-view { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* --- GRID SYSTEM --- */
+        .grid-container {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--bg-panel); border: 1px solid var(--border);
+            border-radius: 12px; padding: 1.5rem; display: flex; flex-direction: column;
+        }
+
+        .card-header { display: flex; justify-content: space-between; margin-bottom: 1rem; }
+        .card-title { font-weight: 600; font-size: 1rem; }
+        .chart-box { position: relative; width: 100%; min-height: 250px; flex: 1; }
+
+        /* KPIs */
+        .kpi-card { display: flex; align-items: center; justify-content: space-between; }
+        .kpi-data h2 { font-size: 2.2rem; margin-bottom: 0.2rem; }
+        .kpi-data p { font-size: 0.85rem; color: var(--text-muted); }
+        .kpi-icon { 
+            width: 48px; height: 48px; border-radius: 12px; 
+            display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
+        }
+
+        /* Tabla Top 5 */
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+        .data-table th { text-align: left; color: var(--text-muted); padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+        .data-table td { padding: 0.6rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.85rem; }
+        .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+
+        /* Utilidades */
+        .span-1 { grid-column: span 1; }
+        .span-2 { grid-column: span 2; }
+        .span-4 { grid-column: span 4; }
+        .row-2 { grid-row: span 2; }
+        #excelInput { display: none; }
+
+        @media (max-width: 1024px) {
+            .grid-container { grid-template-columns: repeat(2, 1fr); }
+            .span-1 { grid-column: span 1; }
+            .span-2, .span-4 { grid-column: span 2; }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%; height: auto; bottom: 0; top: auto;
+                flex-direction: row; padding: 0.5rem; justify-content: space-around;
+                background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(10px);
+                border-top: 1px solid var(--border); border-right: none;
+            }
+            .brand, .nav-item span { display: none; }
+            .nav-item { padding: 0.8rem; border-radius: 50%; }
+            .nav-item.active { border-left: none; background: var(--primary); color: white; }
+            .main-content { margin-left: 0; width: 100%; padding-bottom: 90px; }
+            .grid-container { grid-template-columns: 1fr; }
+            .span-1, .span-2, .span-4 { grid-column: span 1; }
+            .top-bar { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="sidebar">
+        <div class="brand">
+            <i class="ph-fill ph-shield-check" style="color: var(--primary); font-size: 1.5rem;"></i>
+            <span>Inspectoría App</span>
+        </div>
+        <ul class="nav-links">
+            <li class="nav-item active" onclick="switchView('view-dashboard', this)">
+                <i class="ph ph-squares-four"></i>
+                <span>Resumen General</span>
+            </li>
+            <li class="nav-item" onclick="switchView('view-ead', this)">
+                <i class="ph ph-gavel"></i>
+                <span>Decisiones EAD</span>
+            </li>
+            <li class="nav-item" onclick="switchView('view-inspecciones', this)">
+                <i class="ph ph-magnifying-glass"></i>
+                <span>Inspecciones</span>
+            </li>
+        </ul>
+    </nav>
+
+    <main class="main-content">
+        
+        <div class="top-bar">
+            <div>
+                <h1 id="page-title">Resumen General</h1>
+                <p style="color: var(--text-muted); font-size: 0.9rem;">Sistema de Control de Producción</p>
+            </div>
+            <div class="btn-group">
+                <button class="btn" onclick="downloadTemplate()">
+                    <i class="ph ph-download-simple"></i> Plantilla Excel
+                </button>
+                <button class="btn btn-primary" onclick="document.getElementById('excelInput').click()">
+                    <i class="ph ph-upload-simple"></i> Importar Data
+                </button>
+                <input type="file" id="excelInput" accept=".xlsx, .xls" onchange="handleFile(this)">
+            </div>
+        </div>
+
+        <div id="view-dashboard" class="view-section active-view">
+            <div class="grid-container">
+                <div class="card kpi-card span-1">
+                    <div class="kpi-data"><h2 id="kpi-total">93</h2><p>Carga Total EAD</p></div>
+                    <div class="kpi-icon" style="background: rgba(59, 130, 246, 0.1); color: var(--primary);"><i class="ph ph-folder-notch"></i></div>
+                </div>
+                <div class="card kpi-card span-1">
+                    <div class="kpi-data"><h2 id="kpi-efic">43%</h2><p>Eficiencia Resolución</p></div>
+                    <div class="kpi-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--success);"><i class="ph ph-chart-pie-slice"></i></div>
+                </div>
+                <div class="card kpi-card span-1">
+                    <div class="kpi-data"><h2 id="kpi-leves">56</h2><p>Sanciones Leves</p></div>
+                    <div class="kpi-icon" style="background: rgba(245, 158, 11, 0.1); color: var(--warning);"><i class="ph ph-warning"></i></div>
+                </div>
+                <div class="card kpi-card span-1">
+                    <div class="kpi-data"><h2 id="kpi-insp">7</h2><p>Inspecciones</p></div>
+                    <div class="kpi-icon" style="background: rgba(239, 68, 68, 0.1); color: var(--text-muted);"><i class="ph ph-eye"></i></div>
+                </div>
+                <div class="card span-4 row-2">
+                    <div class="card-header"><span class="card-title">Evolución Temporal de Sanciones Leves</span></div>
+                    <div class="chart-box"><canvas id="chartTrend"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-ead" class="view-section">
+            <div class="grid-container">
+                <div class="card span-2">
+                    <div class="card-header"><span class="card-title">Estado de Expedientes</span></div>
+                    <div class="chart-box"><canvas id="chartStatus"></canvas></div>
+                </div>
+                <div class="card span-2">
+                    <div class="card-header"><span class="card-title">Dictámenes Emitidos</span></div>
+                    <div class="chart-box"><canvas id="chartDecisions"></canvas></div>
+                </div>
+                <div class="card span-4">
+                    <div class="card-header"><span class="card-title">Desglose por Gravedad de Sanción (EAD)</span></div>
+                    <div class="chart-box"><canvas id="chartSeverity"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-inspecciones" class="view-section">
+            <div class="grid-container">
+                <div class="card span-2">
+                    <div class="card-header"><span class="card-title">Operativos de Inspección Realizados</span></div>
+                    <div class="chart-box"><canvas id="chartInspections"></canvas></div>
+                </div>
+                <div class="card span-2 row-2">
+                    <div class="card-header"><span class="card-title">Top 5 Sanciones Leves Recurrentes</span></div>
+                    <table class="data-table">
+                        <thead><tr><th>Código</th><th>Infracción</th><th>Total</th></tr></thead>
+                        <tbody id="top5Body"></tbody>
+                    </table>
+                </div>
+                <div class="card span-2">
+                    <div class="card-header"><span class="card-title">Detalle Semanal de Incidencias</span></div>
+                    <div class="chart-box"><canvas id="chartWeekly"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // CONFIGURACIÓN VISUAL
+        Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.05)';
+
+        let chartTrend, chartStatus, chartDecisions, chartSeverity, chartInspections, chartWeekly;
+
+        const initialData = {
+            trend: [24, 32, 60],
+            status: [40, 53],
+            decisions: [26, 13, 1],
+            severity: [7, 16, 3],
+            inspections: [3, 4],
+            weekly: [5, 6, 6, 7, 14, 18],
+            top5: [
+                {code: 'L-14', name: 'Retardo Injustificado', val: 18},
+                {code: 'L-02', name: 'Descortesía', val: 12},
+                {code: 'L-08', name: 'Uso Indebido Bienes', val: 10},
+                {code: 'L-21', name: 'Negligencia Funcional', val: 9},
+                {code: 'L-05', name: 'Descuido Uniforme', val: 7}
+            ]
+        };
+
+        function initCharts() {
+            // 1. Tendencia
+            chartTrend = new Chart(document.getElementById('chartTrend').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: ['Enero', 'Febrero (Actual)', 'Proyección Fin Mes'],
+                    datasets: [{
+                        label: 'Total Sanciones', data: initialData.trend,
+                        borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        fill: true, tension: 0.3
+                    }]
+                }, options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 2. Status (EAD) - Gris Visible
+            chartStatus = new Chart(document.getElementById('chartStatus').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Resueltos', 'Pendientes'],
+                    datasets: [{ data: initialData.status, backgroundColor: ['#10b981', '#64748b'], borderWidth: 0 }]
+                }, options: { responsive: true, maintainAspectRatio: false, cutout: '70%' }
+            });
+
+            // 3. Decisiones
+            chartDecisions = new Chart(document.getElementById('chartDecisions').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: ['Sancionar', 'Absolver', 'Caducidad'],
+                    datasets: [{ label: 'Exp', data: initialData.decisions, backgroundColor: ['#ef4444', '#3b82f6', '#64748b'], borderRadius: 6 }]
+                }, options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 4. Gravedad
+            chartSeverity = new Chart(document.getElementById('chartSeverity').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: ['Muy Grave', 'Grave', 'Leve (DS016)'],
+                    datasets: [{ label: 'Cantidad', data: initialData.severity, backgroundColor: ['#ef4444', '#f97316', '#10b981'], borderRadius: 6 }]
+                }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false }
+            });
+
+            // 5. Inspecciones
+            chartInspections = new Chart(document.getElementById('chartInspections').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: ['Enero', 'Febrero'],
+                    datasets: [{ label: 'Insp.', data: initialData.inspections, backgroundColor: '#3b82f6', borderRadius: 8 }]
+                }, options: { responsive: true, maintainAspectRatio: false, scales: {y: {ticks: {stepSize: 1}}} }
+            });
+
+            // 6. Semanal
+            chartWeekly = new Chart(document.getElementById('chartWeekly').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'],
+                    datasets: [{ label: 'Incidencias', data: initialData.weekly, borderColor: '#f59e0b', tension: 0.4 }]
+                }, options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            updateTop5Table(initialData.top5);
+        }
+
+        function updateTop5Table(data) {
+            const tbody = document.getElementById('top5Body');
+            tbody.innerHTML = '';
+            data.forEach(item => {
+                const row = `<tr>
+                    <td><span class="status-badge">${item.code}</span></td>
+                    <td>${item.name}</td>
+                    <td><strong>${item.val}</strong></td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        }
+
+        // --- FUNCIONES EXCEL ACTUALIZADAS PARA TOP 5 ---
+
+        function downloadTemplate() {
+            const ws_data = [
+                ["KPI_Total", "KPI_Eficiencia", "KPI_Leves", "KPI_Insp", "Tendencia_Ene", "Tendencia_Feb", "Tendencia_Proy"],
+                [93, 0.43, 56, 7, 24, 32, 60], 
+                [],
+                ["EAD_Resueltos", "EAD_Pendientes", "Dec_Sancionar", "Dec_Absolver", "Dec_Caducidad"],
+                [40, 53, 26, 13, 1],
+                [],
+                ["Grav_MuyGrave", "Grav_Grave", "Grav_LeveDS", "Insp_Ene", "Insp_Feb"],
+                [7, 16, 3, 3, 4],
+                [],
+                // AQUI ESTA EL CAMBIO IMPORTANTE: Headers para los 5 ítems
+                ["T5_Cod1", "T5_Nom1", "T5_Val1", "T5_Cod2", "T5_Nom2", "T5_Val2", "T5_Cod3", "T5_Nom3", "T5_Val3", "T5_Cod4", "T5_Nom4", "T5_Val4", "T5_Cod5", "T5_Nom5", "T5_Val5"], 
+                // AQUI ESTA EL CAMBIO IMPORTANTE: Data de ejemplo para los 5 ítems
+                [
+                    "L-14", "Retardo Injustif.", 18, 
+                    "L-02", "Descortesía", 12,
+                    "L-08", "Uso Indebido", 10,
+                    "L-21", "Negligencia", 9,
+                    "L-05", "Uniforme", 7
+                ]
+            ];
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+            XLSX.utils.book_append_sheet(wb, ws, "Datos_Inspectoría");
+            XLSX.writeFile(wb, "Plantilla_Inspectoría_Carga.xlsx");
+        }
+
+        function handleFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1});
+                if (jsonData.length > 1) {
+                    applyExcelData(jsonData);
+                    alert("¡Datos actualizados correctamente!");
+                } else {
+                    alert("Error en el archivo.");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function applyExcelData(rows) {
+            // KPIs
+            const r1 = rows[1];
+            if(r1) {
+                document.getElementById('kpi-total').innerText = r1[0] || 0;
+                document.getElementById('kpi-efic').innerText = Math.round((r1[1] || 0) * 100) + '%';
+                document.getElementById('kpi-leves').innerText = r1[2] || 0;
+                document.getElementById('kpi-insp').innerText = r1[3] || 0;
+                chartTrend.data.datasets[0].data = [r1[4], r1[5], r1[6]];
+                chartTrend.update();
+            }
+            // EAD
+            const r4 = rows[4];
+            if(r4) {
+                chartStatus.data.datasets[0].data = [r4[0], r4[1]];
+                chartStatus.update();
+                chartDecisions.data.datasets[0].data = [r4[2], r4[3], r4[4]];
+                chartDecisions.update();
+            }
+            // Gravedad
+            const r7 = rows[7];
+            if(r7) {
+                chartSeverity.data.datasets[0].data = [r7[0], r7[1], r7[2]];
+                chartSeverity.update();
+                chartInspections.data.datasets[0].data = [r7[3], r7[4]];
+                chartInspections.update();
+            }
+            // TOP 5 COMPLETO
+            const r10 = rows[10];
+            if(r10) {
+                 const newTop5 = [];
+                 // Iteramos 5 veces para leer los 5 grupos de columnas
+                 for(let i=0; i<5; i++) {
+                     // El índice base salta de 3 en 3 (0, 3, 6, 9, 12)
+                     const idx = i * 3;
+                     if(r10[idx]) { // Si existe código
+                        newTop5.push({
+                            code: r10[idx],
+                            name: r10[idx+1],
+                            val: r10[idx+2]
+                        });
+                     }
+                 }
+                 updateTop5Table(newTop5);
+            }
+        }
+
+        function switchView(viewId, navElement) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active-view'));
+            document.getElementById(viewId).classList.add('active-view');
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            navElement.classList.add('active');
+            const titles = {'view-dashboard': 'Resumen General', 'view-ead': 'Gestión de Decisiones EAD', 'view-inspecciones': 'Operaciones e Inspecciones'};
+            document.getElementById('page-title').innerText = titles[viewId];
+        }
+
+        window.onload = initCharts;
+    </script>
+</body>
+</html>
